@@ -14,11 +14,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Auth / Passport
+// Passport / JWT
 initializeAuth(passport);
 app.use(passport.initialize());
 
-// Routes
+// -------------------- Routes -------------------- //
 
 // Register
 app.post("/api/user/register", async (req, res) => {
@@ -41,10 +41,9 @@ app.post("/api/user/login", async (req, res) => {
   }
 });
 
-// Protected routes (JWT)
+// All favourites routes require JWT
 const authMiddleware = passport.authenticate("jwt", { session: false });
 
-// Get favourites
 app.get("/api/user/favourites", authMiddleware, async (req, res) => {
   try {
     const fav = await userService.getFavourites(req.user._id);
@@ -54,7 +53,6 @@ app.get("/api/user/favourites", authMiddleware, async (req, res) => {
   }
 });
 
-// Add favourite
 app.put("/api/user/favourites/:id", authMiddleware, async (req, res) => {
   try {
     const fav = await userService.addFavourite(req.user._id, req.params.id);
@@ -64,7 +62,6 @@ app.put("/api/user/favourites/:id", authMiddleware, async (req, res) => {
   }
 });
 
-// Remove favourite
 app.delete("/api/user/favourites/:id", authMiddleware, async (req, res) => {
   try {
     const fav = await userService.removeFavourite(req.user._id, req.params.id);
@@ -74,21 +71,14 @@ app.delete("/api/user/favourites/:id", authMiddleware, async (req, res) => {
   }
 });
 
+// -------------------- Start / Export -------------------- //
+
 const PORT = process.env.PORT || 8080;
 
-// Ensure MongoDB connection (for local + Vercel)
-let isConnected = false;
-
-const ensureDb = async () => {
-  if (!isConnected) {
-    await userService.connect();
-    isConnected = true;
-  }
-};
-
-// Local dev: start a server with app.listen
+// For local development: start the server normally
 if (!process.env.VERCEL) {
-  ensureDb()
+  userService
+    .connect()
     .then(() => {
       app.listen(PORT, () => {
         console.log("User API running on " + PORT);
@@ -97,10 +87,17 @@ if (!process.env.VERCEL) {
     .catch((err) => {
       console.error("Failed to connect to MongoDB:", err);
     });
+} else {
+  // On Vercel: just connect once per lambda container
+  userService
+    .connect()
+    .then(() => {
+      console.log("MongoDB connected (Vercel)");
+    })
+    .catch((err) => {
+      console.error("Failed to connect to MongoDB (Vercel):", err);
+    });
 }
 
-// Vercel: export default handler
-export default async function handler(req, res) {
-  await ensureDb();
-  return app(req, res);
-}
+// Vercel uses the default export as the handler
+export default app;
